@@ -1,6 +1,29 @@
 import pickle
 from collections import namedtuple
+import io
+import builtins
 
+safe_builtins = {
+    'range',
+    'complex',
+    'set',
+    'frozenset',
+    'slice',
+}
+
+class RestrictedUnpickler(pickle.Unpickler):
+    
+    def find_class(self, module, name):
+        """Only allow safe classes from builtins"""
+        if module == "builtins" and name in safe_builtins:
+            return getattr(builtins, name)
+        """Forbid everything else"""
+        raise pickle.UnpicklingError("global '%s.%s' is forbidden" %
+                                     (module, name))
+
+def restricted_loads(s):
+    """Helper function analogous to pickle.loads()"""
+    return RestrictedUnpickler(io.BytesIO(s)).load()
 
 class RecordLevel:
     __slots__ = ("name", "no", "icon")
@@ -74,7 +97,7 @@ class RecordException(namedtuple("RecordException", ("type", "value", "traceback
     @classmethod
     def _from_pickled_value(cls, type_, pickled_value, traceback_):
         try:
-            value = pickle.loads(pickled_value)
+            value = pickle.loads(restricted_loads(pickled_value))
         except pickle.PickleError:
             return cls(type_, None, traceback_)
         else:
